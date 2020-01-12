@@ -8,11 +8,15 @@ import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
+import java.io.DataOutputStream;
+
 public class NativeService extends Service {
 
     static {
         System.loadLibrary("dpi-bypass");
     }
+
+    private SharedPreferences prefs;
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -29,12 +33,46 @@ public class NativeService extends Service {
             return;
         }
 
+        // Start native code
         nativeThread.start();
+
+        prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        // Set http_proxy setting if need
+        if(prefs.getBoolean("other_proxy_setting", false)) {
+            try {
+                Process su = Runtime.getRuntime().exec("su");
+                DataOutputStream outputStream = new DataOutputStream(su.getOutputStream());
+
+                outputStream.writeBytes("settings put global http_proxy 127.0.0.1:" + prefs.getString("other_bind_port", "8080") + "\n");
+                outputStream.flush();
+
+                outputStream.writeBytes("exit\n");
+                outputStream.flush();
+            } catch (Exception e) {
+                Log.e("Java/NativeService/onCreate", "Failed to set http_proxy global setting");
+            }
+        }
     }
 
     @Override
     public void onDestroy() {
         nativeThread.quit();
+
+        // Unset http_proxy setting if need
+        if(prefs.getBoolean("other_proxy_setting", false)) {
+            try {
+                Process su = Runtime.getRuntime().exec("su");
+                DataOutputStream outputStream = new DataOutputStream(su.getOutputStream());
+
+                outputStream.writeBytes("settings put global http_proxy :0");
+                outputStream.flush();
+
+                outputStream.writeBytes("exit\n");
+                outputStream.flush();
+            } catch (Exception e) {
+                Log.e("Java/NativeService/onCreate", "Failed to unset http_proxy global setting");
+            }
+        }
     }
 
     private class thread extends Thread{

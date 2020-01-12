@@ -25,7 +25,7 @@
             android:textAppearance="@style/TextAppearance.AppCompat.Title.Inverse" />
 
         <ImageButton
-            android:id="@+id/imageButton3"
+            android:id="@+id/settings_button"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:layout_alignParentRight="true"

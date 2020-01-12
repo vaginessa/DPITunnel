@@ -1,21 +1,28 @@
 package ru.evgeniy.dpitunnel;
 
 import android.app.ActivityManager;
+import android.app.FragmentManager;
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.AssetManager;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.preference.PreferenceManager;
+import android.provider.Settings;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.ProgressBar;
+import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -28,19 +35,20 @@ import javax.net.ssl.SSLContext;
 public class MainActivity extends AppCompatActivity {
 
     private Button mainButton;
+    private ImageButton settingsButton;
+    private Button updateHostlistButton;
     private TextView asciiLogo;
-    private CustomEditText bindPort;
-    private boolean isPortChanged = false;
+    private ProgressBar updateHostlistBar;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+
         if (!prefs.getBoolean("firstTimeFlag", false)) {
             // do one time tasks
-            extractAssetsFile("cacert.pem");
             new updateHostlistTask().execute();
 
             // mark first time has ran.
@@ -49,10 +57,17 @@ public class MainActivity extends AppCompatActivity {
             editor.commit();
         }
 
-        asciiLogo = findViewById(R.id.ascii_logo);
-        bindPort = findViewById(R.id.bind_port);
-        mainButton = findViewById(R.id.main_button);
+        // Set gefault settings values
+        PreferenceManager.setDefaultValues(this, R.xml.settings, false);
 
+        // Find layout elements
+        mainButton = findViewById(R.id.main_button);
+        settingsButton = findViewById(R.id.settings_button);
+        updateHostlistButton = findViewById(R.id.update_hostlist_button);
+        asciiLogo = findViewById(R.id.ascii_logo);
+        updateHostlistBar = findViewById(R.id.update_hostlist_bar);
+
+        // Set logo state
         if(isServiceRunning(NativeService.class)) {
             asciiLogo.setText(R.string.app_ascii_logo_unlock);
             asciiLogo.setTextColor(Color.GREEN);
@@ -64,52 +79,36 @@ public class MainActivity extends AppCompatActivity {
             mainButton.setText(R.string.off);
         }
 
-        bindPort.setText(Integer.toString(prefs.getInt("bind_port", 8080)));
-
+        // Initialize buttons
         mainButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 if(isServiceRunning(NativeService.class)) {
                     stopService(new Intent(MainActivity.this, NativeService.class));
+
                     asciiLogo.setText(R.string.app_ascii_logo_lock);
                     asciiLogo.setTextColor(Color.RED);
                     mainButton.setText(R.string.off);
                 }
                 else {
                     startService(new Intent(MainActivity.this, NativeService.class));
+
                     asciiLogo.setText(R.string.app_ascii_logo_unlock);
                     asciiLogo.setTextColor(Color.GREEN);
                     mainButton.setText(R.string.on);
                 }
             }
         });
-
-        bindPort.addTextChangedListener(new TextWatcher() {
-            // the user's changes are saved here
-            public void onTextChanged(CharSequence c, int start, int before, int count) {
-                isPortChanged = true;
-            }
-
-            public void beforeTextChanged(CharSequence c, int start, int count, int after) {
-                // this space intentionally left blank
-            }
-
-            public void afterTextChanged(Editable c) {
-                // this one too
+        settingsButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                MainActivity.this.startActivity(new Intent(MainActivity.this, SettingsActivity.class));
             }
         });
-
-        bindPort.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-
-            public void onFocusChange(View v, boolean hasFocus) {
-                if(!hasFocus && isPortChanged) {
-                    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainActivity.this);
-                    SharedPreferences.Editor editor = prefs.edit();
-                    editor.putInt("bind_port", Integer.parseInt(bindPort.getText().toString()));
-                    editor.commit();
-
-                    isPortChanged = false;
-                }
+        updateHostlistButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                new updateHostlistTask().execute();
             }
         });
     }
@@ -125,6 +124,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private class updateHostlistTask extends AsyncTask<Void, Void, Void> {
+        private boolean isOK = true;
+
+        @Override
+        protected void onPreExecute() {
+            // Show ProgressBar
+            updateHostlistBar.setVisibility(View.VISIBLE);
+        }
 
         @Override
         protected Void doInBackground(Void... values) {
@@ -141,8 +147,8 @@ public class MainActivity extends AppCompatActivity {
                 c.setSSLSocketFactory(sc.getSocketFactory());
 
                 // Set options and connect
-                c.setReadTimeout(7000);
-                c.setConnectTimeout(7000);
+                c.setReadTimeout(700);
+                c.setConnectTimeout(700);
                 c.setRequestMethod("GET");
                 c.setDoInput(true);
 
@@ -158,35 +164,24 @@ public class MainActivity extends AppCompatActivity {
                 f.close();
             } catch (Exception e) {
                 e.printStackTrace();
+                isOK = false;
             }
 
             return null;
         }
-    }
 
-    private void extractAssetsFile(String filename) {
-        AssetManager assetManager = this.getAssets();
+        @Override
+        protected void onPostExecute(Void result) {
+            // Hide ProgressBar
+            updateHostlistBar.setVisibility(View.INVISIBLE);
 
-        InputStream in = null;
-        OutputStream out = null;
-        try {
-            in = assetManager.open(filename);
-            String newFileName = this.getPackageManager().getPackageInfo(this.getPackageName(), 0).applicationInfo.dataDir + "/" + filename;
-            out = new FileOutputStream(newFileName);
-
-            byte[] buffer = new byte[1024];
-            int read;
-            while ((read = in.read(buffer)) != -1) {
-                out.write(buffer, 0, read);
+            // Show updateHostlistStatus
+            if(isOK)
+            {
+                Toast.makeText(MainActivity.this, getString(R.string.update_hostlist_ok), Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(MainActivity.this, getString(R.string.update_hostlist_bad), Toast.LENGTH_SHORT).show();
             }
-            in.close();
-            in = null;
-            out.flush();
-            out.close();
-            out = null;
-        } catch (Exception e) {
-            Log.e("Java/extractAssetsFile", e.getMessage());
         }
-
     }
 }

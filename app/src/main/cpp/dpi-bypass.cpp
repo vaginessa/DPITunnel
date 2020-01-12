@@ -13,8 +13,6 @@
 
 #include <unistd.h>
 
-#include <curl/curl.h>
-
 #include <rapidjson/document.h>
 #include <rapidjson/prettywriter.h>
 #include <jni.h>
@@ -28,41 +26,45 @@
 std::string CONNECTION_ESTABLISHED_RESPONSE("HTTP/1.1 200 Connection established\r\n\r\n");
 rapidjson::Document hostlist_document;
 std::string app_dir;
+JNIEnv* jni_env;
 
 struct
 {
 	struct
 	{
-		bool is_use_split = false;
-		int split_position = 2;
-		bool is_use_socks5 = true;
+		bool is_use_split;
+		unsigned int split_position;
+		bool is_use_socks5;
 	} https;
 
 	struct
 	{
-		bool is_use_split = false;
-		int split_position = 2;
-		bool is_change_host_header = false;
-		std::string host_header = "hOsT";
-		bool is_add_dot_after_host = false;
-		bool is_add_tab_after_host = false;
-		bool is_remove_space_after_host = false;
-		bool is_add_space_after_method = false;
-		bool is_add_newline_before_method = false;
-		bool is_use_unix_newline = false;
-		bool is_use_socks5 = true;
+		bool is_use_split;
+		unsigned int split_position;
+		bool is_change_host_header;
+		std::string host_header;
+		bool is_add_dot_after_host;
+		bool is_add_tab_after_host;
+		bool is_remove_space_after_host;
+		bool is_add_space_after_method;
+		bool is_add_newline_before_method;
+		bool is_use_unix_newline;
+		bool is_use_socks5;
 	} http;
 
 	struct
 	{
-		bool is_use_doh = true;
-		bool is_use_doh_only_for_site_in_hostlist = true;
-		std::string dns_server = "https://cloudflare-dns.com";
+		bool is_use_doh;
+		bool is_use_doh_only_for_site_in_hostlist;
+		std::string dns_doh_server;
 	} dns;
 
-	bool is_use_hostlist = true;
-	std::string socks5_server = "5.133.198.165:8000";
-	int bind_port;
+	struct
+    {
+        bool is_use_hostlist;
+        std::string socks5_server;
+        int bind_port;
+    } other;
 } Options;
 
 int find_in_hostlist(std::string host)
@@ -199,78 +201,42 @@ int send_string_with_split(int socket, std::string string_to_send, unsigned int 
 	return 0;
 }
 
-size_t curlwrite_callback(void *contents, size_t size, size_t nmemb, std::string *s)
-{
-	size_t newLength = size*nmemb;
-	try
-	{
-		s->append((char *) contents, newLength);
-	}
-	catch(std::bad_alloc &e)
-	{
-		return 0;
-	}
-	return newLength;
-}
-
 int resolve_host_over_doh(std::string host, std::string & ip)
 {
     std::string log_tag = "CPP/resolve_host_over_doh";
 
-	// Send request to DoH JSON server
-	CURL *curl;
-	CURLcode response;
+	// Make request to DoH with Java code
+	// Find class
+    jclass utils_class = jni_env->FindClass("ru/evgeniy/dpitunnel/Utils");
+    if(utils_class == NULL)
+    {
+        log_error(log_tag.c_str(), "Failed to find Utils class");
+        return -1;
+    }
 
-	// Init cURL
-	curl_global_init(CURL_GLOBAL_DEFAULT);
+	// Find Java method
+    jmethodID utils_make_doh_request = jni_env->GetStaticMethodID(utils_class, "makeDOHRequest", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+    if(utils_make_doh_request == NULL)
+    {
+        log_error(log_tag.c_str(), "Failed to find makeDOHRequest method");
+        return -1;
+    }
 
-	curl = curl_easy_init();
-	if(!curl)
-	{
-		log_error(log_tag.c_str(), "cURL init failed");
-		return -1;
-	}
-
-	std::string response_string;
-
-	// Set options
-	curl_easy_setopt(curl, CURLOPT_URL, std::string(Options.dns.dns_server + "/dns-query?name=" + host + "&type=A").c_str());
-
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlwrite_callback);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_string);
-
-	// Enable ssl
-    curl_easy_setopt(curl, CURLOPT_CAINFO, (app_dir + "cacert.pem").c_str());
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
-
-	// Set header
-	struct curl_slist *chunk = NULL;
-	chunk = curl_slist_append(chunk, std::string("accept: application/dns-json").c_str());
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
-
-	// Process request
-	response = curl_easy_perform(curl);
-
-	if(response != CURLE_OK)
-	{
-		log_error(log_tag.c_str(), "Perform request to DoH failed. cURL error: %d", response);
-		curl_easy_cleanup(curl);
-		curl_global_cleanup();
-		return -1;
-	}
-
-	// Cleanup cURL
-	curl_easy_cleanup(curl);
-	curl_global_cleanup();
+    // Call method
+    jstring response_string_object = (jstring) jni_env->CallStaticObjectMethod(utils_class, utils_make_doh_request, jni_env->NewStringUTF(Options.dns.dns_doh_server.c_str()), jni_env->NewStringUTF(host.c_str()));
+    std::string response_string = jni_env->GetStringUTFChars(response_string_object, 0);
+    if(response_string.empty())
+    {
+        log_error(log_tag.c_str(), "Failed to make request to DoH server");
+    }
 
 	// Parse recieved response with rapidjson
 	rapidjson::Document response_string_json;
-        if(response_string_json.Parse(response_string.c_str()).HasParseError())
-        {
-            log_error(log_tag.c_str(), "Failed to parse DoH response");
-            return -1;
-        }
+    if(response_string_json.Parse(response_string.c_str()).HasParseError())
+    {
+        log_error(log_tag.c_str(), "Failed to parse DoH response");
+        return -1;
+    }
 
 	auto answers_array = response_string_json["Answer"].GetArray();
 	ip = answers_array[answers_array.Size() - 1]["data"].GetString();
@@ -289,7 +255,7 @@ int resolve_host_over_dns(std::string host, std::string & ip)
 
 	if(getaddrinfo(host.c_str(), NULL, &hints, &res) != 0)
 	{
-		log_error(log_tag.c_str(), "Failed to get host address");
+		log_error(log_tag.c_str(), "Failed to get host address. Errno: %s", strerror(errno));
 		return -1;
 	}
 
@@ -314,7 +280,7 @@ int resolve_host_over_dns(std::string host, std::string & ip)
 
 int resolve_host(std::string host, std::string & ip)
 {
-	if(Options.dns.is_use_doh && (Options.is_use_hostlist ? (Options.dns.is_use_doh_only_for_site_in_hostlist ? find_in_hostlist(host) : true) : true))
+	if(Options.dns.is_use_doh && (Options.other.is_use_hostlist ? (Options.dns.is_use_doh_only_for_site_in_hostlist ? find_in_hostlist(host) : true) : true))
 	{
 		return resolve_host_over_doh(host, ip);
 	}
@@ -394,16 +360,16 @@ int init_remote_server_socket(int & remote_server_socket, std::string remote_ser
 	}
 
 	// Check if socks5 is need
-	if((Options.is_use_hostlist ? find_in_hostlist(remote_server_host) : true) && ((Options.https.is_use_socks5 && is_https) || (Options.http.is_use_socks5 && !is_https)))
+	if((Options.other.is_use_hostlist ? find_in_hostlist(remote_server_host) : true) && ((Options.https.is_use_socks5 && is_https) || (Options.http.is_use_socks5 && !is_https)))
 	{
 		// Parse socks5 server string
-		size_t splitter_position = Options.socks5_server.find(':');
+		size_t splitter_position = Options.other.socks5_server.find(':');
 		if(splitter_position == std::string::npos)
 		{
 			log_error(log_tag.c_str(), "Failed to parse SOKCS5 server");
 		}
-		std::string proxy_ip = Options.socks5_server.substr(0, splitter_position);
-		std::string proxy_port = Options.socks5_server.substr(splitter_position + 1, Options.socks5_server.size() - splitter_position - 1);
+		std::string proxy_ip = Options.other.socks5_server.substr(0, splitter_position);
+		std::string proxy_port = Options.other.socks5_server.substr(splitter_position + 1, Options.other.socks5_server.size() - splitter_position - 1);
 
 		// Add port and address
 		remote_server_address.sin_family = AF_INET;
@@ -530,7 +496,7 @@ void proxy_https(int client_socket, std::string host, int port)
 	}
 
 	// Search in host list one time to save cpu time
-	bool hostlist_condition = Options.is_use_hostlist ? find_in_hostlist(host) : true;
+	bool hostlist_condition = Options.other.is_use_hostlist ? find_in_hostlist(host) : true;
 
 	// Split only first https packet, what contains unencrypted sni
 	bool is_clienthello_request = true;
@@ -691,7 +657,7 @@ void proxy_http(int client_socket, std::string host, int port, std::string first
 	std::string first_response(8192, ' ');
 
 	// Search in host list one time to save cpu time
-	bool hostlist_condition = Options.is_use_hostlist ? find_in_hostlist(host) : true;
+	bool hostlist_condition = Options.other.is_use_hostlist ? find_in_hostlist(host) : true;
 
 	// Modify http request to bypass dpi
 	modify_http_request(first_request, hostlist_condition);
@@ -866,7 +832,9 @@ int server_socket;
 extern "C" JNIEXPORT jint JNICALL Java_ru_evgeniy_dpitunnel_NativeService_init(JNIEnv* env, jobject obj, jobject prefs_object)
 {
     std::string log_tag = "CPP/init";
+    jni_env = env;
 
+    // Find SharedPreferences
     jclass prefs_class = env->FindClass("android/content/SharedPreferences");
     if(prefs_class == NULL)
     {
@@ -874,17 +842,56 @@ extern "C" JNIEXPORT jint JNICALL Java_ru_evgeniy_dpitunnel_NativeService_init(J
         return -1;
     }
 
-    jmethodID prefs_getInt = env->GetMethodID(prefs_class, "getInt", "(Ljava/lang/String;I)I");
-    if(prefs_getInt == NULL)
+    // Find method
+    jmethodID prefs_getBool = env->GetMethodID(prefs_class, "getBoolean", "(Ljava/lang/String;Z)Z");
+    if(prefs_getBool == NULL)
     {
         log_error(log_tag.c_str(), "Failed to find getInt method");
         return -1;
     }
 
+    // Find method
+    jmethodID prefs_getString = env->GetMethodID(prefs_class, "getString", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+    if(prefs_getString == NULL)
+    {
+        log_error(log_tag.c_str(), "Failed to find getInt method");
+        return -1;
+    }
 
+    // Fill settings
+    jstring string_object;
+    Options.https.is_use_split = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("https_split"), false);
+    string_object = (jstring) env->CallObjectMethod(prefs_object, prefs_getString, env->NewStringUTF("https_split_position"), env->NewStringUTF(" "));
+    Options.https.split_position = atoi(env->GetStringUTFChars(string_object, 0));
+    Options.https.is_use_socks5 = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("https_socks5"), false);
+
+    Options.http.is_use_split = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("http_split"), false);
+    string_object = (jstring) env->CallObjectMethod(prefs_object, prefs_getString, env->NewStringUTF("http_split_position"), env->NewStringUTF(" "));
+    Options.http.split_position = atoi(env->GetStringUTFChars(string_object, 0));
+    Options.http.is_change_host_header = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("http_header_switch"), false);
+    string_object = (jstring) env->CallObjectMethod(prefs_object, prefs_getString, env->NewStringUTF("http_header_spell"), env->NewStringUTF(" "));
+    Options.http.host_header = env->GetStringUTFChars(string_object, 0);
+    Options.http.is_add_dot_after_host = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("http_dot"), false);
+    Options.http.is_add_tab_after_host = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("http_tab"), false);
+    Options.http.is_remove_space_after_host = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("http_space_host"), false);
+    Options.http.is_add_space_after_method = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("http_space_method"), false);
+    Options.http.is_add_newline_before_method = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("http_newline_method"), false);
+    Options.http.is_use_unix_newline = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("http_unix_newline"), false);
+    Options.http.is_use_socks5 = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("http_socks5"), false);
+
+    Options.dns.is_use_doh = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("dns_doh"), false);
+    Options.dns.is_use_doh_only_for_site_in_hostlist = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("dns_doh_hostlist"), false);
+    string_object = (jstring) env->CallObjectMethod(prefs_object, prefs_getString, env->NewStringUTF("dns_doh_server"), env->NewStringUTF(" "));
+    Options.dns.dns_doh_server = env->GetStringUTFChars(string_object, 0);
+
+    Options.other.is_use_hostlist = env->CallBooleanMethod(prefs_object, prefs_getBool, env->NewStringUTF("other_hostlist"), false);
+    string_object = (jstring) env->CallObjectMethod(prefs_object, prefs_getString, env->NewStringUTF("other_socks5"), env->NewStringUTF(" "));
+    Options.other.socks5_server = env->GetStringUTFChars(string_object, 0);
+    string_object = (jstring) env->CallObjectMethod(prefs_object, prefs_getString, env->NewStringUTF("other_bind_port"), env->NewStringUTF(" "));
+    Options.other.bind_port = atoi(env->GetStringUTFChars(string_object, 0));
 
 	// Parse hostlist if need
-	if(Options.is_use_hostlist)
+	if(Options.other.is_use_hostlist)
 	{
 		if(parse_hostlist() == -1)
 		{
@@ -910,7 +917,7 @@ extern "C" JNIEXPORT jint JNICALL Java_ru_evgeniy_dpitunnel_NativeService_init(J
 	struct sockaddr_in server_address;
 	server_address.sin_family = AF_INET;
 	server_address.sin_addr.s_addr = INADDR_ANY;
-	server_address.sin_port = htons(env->CallIntMethod(prefs_object, prefs_getInt, env->NewStringUTF("bind_port"), 8080));
+	server_address.sin_port = htons(Options.other.bind_port);
 
 	// Bind socket
 	if(bind(server_socket, (struct sockaddr *) &server_address, sizeof(server_address)) < 0)

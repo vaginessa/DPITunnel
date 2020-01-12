@@ -16,7 +16,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <service android:name=".NativeService"/>
+        <activity android:name=".SettingsActivity"
+            android:theme="@style/AppTheme" />
+        <service android:name=".NativeService" />
     </application>
     <uses-permission android:name="android.permission.INTERNET" />
 
