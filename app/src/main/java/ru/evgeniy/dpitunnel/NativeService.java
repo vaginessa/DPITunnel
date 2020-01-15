@@ -48,6 +48,8 @@ public class NativeService extends Service {
 
                 outputStream.writeBytes("exit\n");
                 outputStream.flush();
+
+                su.waitFor();
             } catch (Exception e) {
                 Log.e("Java/NativeService/onCreate", "Failed to set http_proxy global setting");
             }
@@ -56,7 +58,6 @@ public class NativeService extends Service {
 
     @Override
     public void onDestroy() {
-        nativeThread.quit();
 
         // Unset http_proxy setting if need
         if(prefs.getBoolean("other_proxy_setting", false)) {
@@ -64,15 +65,19 @@ public class NativeService extends Service {
                 Process su = Runtime.getRuntime().exec("su");
                 DataOutputStream outputStream = new DataOutputStream(su.getOutputStream());
 
-                outputStream.writeBytes("settings put global http_proxy :0");
+                outputStream.writeBytes("settings put global http_proxy :0\n");
                 outputStream.flush();
 
                 outputStream.writeBytes("exit\n");
                 outputStream.flush();
+
+                su.waitFor();
             } catch (Exception e) {
                 Log.e("Java/NativeService/onCreate", "Failed to unset http_proxy global setting");
             }
         }
+
+        nativeThread.quit();
     }
 
     private class thread extends Thread{
