@@ -55,6 +55,10 @@ public class NativeService extends Service {
                 Log.e("Java/NativeService/onCreate", "Failed to set http_proxy global settings");
             }
         }
+
+        Intent broadCastIntent = new Intent();
+        broadCastIntent.setAction("LOGO_BUTTON_ON");
+        sendBroadcast(broadCastIntent);
     }
 
     private class thread extends Thread{
@@ -102,6 +106,10 @@ public class NativeService extends Service {
         }
 
         nativeThread.quit();
+
+        Intent broadCastIntent = new Intent();
+        broadCastIntent.setAction("LOGO_BUTTON_OFF");
+        sendBroadcast(broadCastIntent);
     }
 
     public native int init(SharedPreferences prefs);

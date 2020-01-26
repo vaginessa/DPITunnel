@@ -1,32 +1,25 @@
 package ru.evgeniy.dpitunnel;
 
 import android.app.ActivityManager;
-import android.app.FragmentManager;
-import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.res.AssetManager;
 import android.graphics.Color;
-import android.net.Uri;
 import android.os.AsyncTask;
-import android.os.Build;
 import android.preference.PreferenceManager;
-import android.provider.Settings;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.URL;
 
 import javax.net.ssl.HttpsURLConnection;
@@ -79,23 +72,36 @@ public class MainActivity extends AppCompatActivity {
             mainButton.setText(R.string.off);
         }
 
+        // Create broadcast receiver to update button and logo state on service run/stop
+        IntentFilter updateState = new IntentFilter();
+        updateState.addAction("LOGO_BUTTON_OFF");
+        updateState.addAction("LOGO_BUTTON_ON");
+        registerReceiver(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent.getAction().equals("LOGO_BUTTON_OFF")) {
+                    // Make logo red and set button to off
+                    asciiLogo.setText(R.string.app_ascii_logo_lock);
+                    asciiLogo.setTextColor(Color.RED);
+                    mainButton.setText(R.string.off);
+                } else if (intent.getAction().equals("LOGO_BUTTON_ON")) {
+                    // Make logo green and set button to on
+                    asciiLogo.setText(R.string.app_ascii_logo_unlock);
+                    asciiLogo.setTextColor(Color.GREEN);
+                    mainButton.setText(R.string.on);
+                }
+            }
+        }, updateState);
+
         // Initialize buttons
         mainButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 if(isServiceRunning(NativeService.class)) {
                     stopService(new Intent(MainActivity.this, NativeService.class));
-
-                    asciiLogo.setText(R.string.app_ascii_logo_lock);
-                    asciiLogo.setTextColor(Color.RED);
-                    mainButton.setText(R.string.off);
                 }
                 else {
                     startService(new Intent(MainActivity.this, NativeService.class));
-
-                    asciiLogo.setText(R.string.app_ascii_logo_unlock);
-                    asciiLogo.setTextColor(Color.GREEN);
-                    mainButton.setText(R.string.on);
                 }
             }
         });

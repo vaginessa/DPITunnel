@@ -35,6 +35,7 @@
             android:background="@null"
             android:gravity="center_vertical"
             android:singleLine="true"
+            android:selectAllOnFocus="true"
             android:textAppearance="@style/TextAppearance.AppCompat.Medium"
             android:textColor="@android:color/white" />
 
