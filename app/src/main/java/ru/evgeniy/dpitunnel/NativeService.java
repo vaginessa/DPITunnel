@@ -36,8 +36,9 @@ public class NativeService extends Service {
         // Start native code
         nativeThread.start();
 
+        // Set http_proxy settings if need
         prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        // Set http_proxy setting if need
+
         if(prefs.getBoolean("other_proxy_setting", false)) {
             try {
                 Process su = Runtime.getRuntime().exec("su");
@@ -51,33 +52,9 @@ public class NativeService extends Service {
 
                 su.waitFor();
             } catch (Exception e) {
-                Log.e("Java/NativeService/onCreate", "Failed to set http_proxy global setting");
+                Log.e("Java/NativeService/onCreate", "Failed to set http_proxy global settings");
             }
         }
-    }
-
-    @Override
-    public void onDestroy() {
-
-        // Unset http_proxy setting if need
-        if(prefs.getBoolean("other_proxy_setting", false)) {
-            try {
-                Process su = Runtime.getRuntime().exec("su");
-                DataOutputStream outputStream = new DataOutputStream(su.getOutputStream());
-
-                outputStream.writeBytes("settings put global http_proxy :0\n");
-                outputStream.flush();
-
-                outputStream.writeBytes("exit\n");
-                outputStream.flush();
-
-                su.waitFor();
-            } catch (Exception e) {
-                Log.e("Java/NativeService/onCreate", "Failed to unset http_proxy global setting");
-            }
-        }
-
-        nativeThread.quit();
     }
 
     private class thread extends Thread{
@@ -87,6 +64,7 @@ public class NativeService extends Service {
             if(init(PreferenceManager.getDefaultSharedPreferences(NativeService.this)) == -1)
             {
                 Log.e("Java/NativeService/nativeThread", "Init failure");
+                NativeService.this.stopSelf();
                 return;
             }
 
@@ -100,6 +78,30 @@ public class NativeService extends Service {
             isRunning = false;
             deInit();
         }
+    }
+
+    @Override
+    public void onDestroy() {
+
+        // Unset http_proxy settings if need
+        if(prefs.getBoolean("other_proxy_setting", false)) {
+            try {
+                Process su = Runtime.getRuntime().exec("su");
+                DataOutputStream outputStream = new DataOutputStream(su.getOutputStream());
+
+                outputStream.writeBytes("settings put global http_proxy :0\n");
+                outputStream.flush();
+
+                outputStream.writeBytes("exit\n");
+                outputStream.flush();
+
+                su.waitFor();
+            } catch (Exception e) {
+                Log.e("Java/NativeService/onCreate", "Failed to unset http_proxy global settings");
+            }
+        }
+
+        nativeThread.quit();
     }
 
     public native int init(SharedPreferences prefs);

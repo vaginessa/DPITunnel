@@ -18,6 +18,8 @@
         </activity>
         <activity android:name=".SettingsActivity"
             android:theme="@style/AppTheme" />
+        <activity android:name=".BrowserActivity"
+            android:theme="@style/AppTheme" />
         <service android:name=".NativeService" />
     </application>
     <uses-permission android:name="android.permission.INTERNET" />

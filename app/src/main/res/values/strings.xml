@@ -43,4 +43,5 @@
     <string name="update_hostlist">Update hostlist</string>
     <string name="update_hostlist_ok">Hostlist updated successfully</string>
     <string name="update_hostlist_bad">There is error while updating hostlist</string>
+    <string name="please_run_service">DPI Tunnel service isn\'t running. Please, run it</string>
 </resources>

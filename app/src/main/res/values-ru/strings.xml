@@ -42,4 +42,5 @@
     <string name="update_hostlist">Обновить hostlist</string>
     <string name="update_hostlist_ok">Hostlist успешно обновлен</string>
     <string name="update_hostlist_bad">Произошла ошибка во время обновления hostlist</string>
+    <string name="please_run_service">Сервис DPI Tunnel не запущен. Пожалуйста, запустите его</string>
 </resources>

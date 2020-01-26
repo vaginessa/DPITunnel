@@ -36,9 +36,9 @@ public class MainActivity extends AppCompatActivity {
 
     private Button mainButton;
     private ImageButton settingsButton;
+    private ImageButton browserButton;
     private Button updateHostlistButton;
     private TextView asciiLogo;
-    private ProgressBar updateHostlistBar;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,9 +63,9 @@ public class MainActivity extends AppCompatActivity {
         // Find layout elements
         mainButton = findViewById(R.id.main_button);
         settingsButton = findViewById(R.id.settings_button);
+        browserButton = findViewById(R.id.browser_button);
         updateHostlistButton = findViewById(R.id.update_hostlist_button);
         asciiLogo = findViewById(R.id.ascii_logo);
-        updateHostlistBar = findViewById(R.id.update_hostlist_bar);
 
         // Set logo state
         if(isServiceRunning(NativeService.class)) {
@@ -105,6 +105,12 @@ public class MainActivity extends AppCompatActivity {
                 MainActivity.this.startActivity(new Intent(MainActivity.this, SettingsActivity.class));
             }
         });
+        browserButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                MainActivity.this.startActivity(new Intent(MainActivity.this, BrowserActivity.class));
+            }
+        });
         updateHostlistButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -124,6 +130,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private class updateHostlistTask extends AsyncTask<Void, Void, Void> {
+        private ProgressBar updateHostlistBar = findViewById(R.id.update_hostlist_bar);
         private boolean isOK = true;
 
         @Override
