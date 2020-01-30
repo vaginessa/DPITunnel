@@ -1,0 +1,6 @@
+I made this tool to bypass DPI.
+It starts local http proxy server that you need to use.
+Support many DPI bypass methods:
+    * Splitting
+    * Packet modification
+    * DNS-Over-HTTPS
