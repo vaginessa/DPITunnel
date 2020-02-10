@@ -6,6 +6,7 @@ import android.util.Log;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.net.Proxy;
 import java.net.URL;
 
 import javax.net.ssl.HttpsURLConnection;
@@ -20,16 +21,13 @@ public class Utils {
             System.setProperty("http.keepAlive", "false");
             System.setProperty("java.net.preferIPv4Stack" , "true");
             URL url = new URL(doh_server + "/dns-query?name=" + hostname + "&type=A");
-            HttpsURLConnection c = (HttpsURLConnection) url.openConnection();
+            HttpsURLConnection c = (HttpsURLConnection) url.openConnection(Proxy.NO_PROXY);
 
             // Add header
             c.setRequestProperty("accept", "application/dns-json");
 
             // Create the SSL connection
-            SSLContext sc;
-            sc = SSLContext.getInstance("TLS");
-            sc.init(null, null, new java.security.SecureRandom());
-            c.setSSLSocketFactory(sc.getSocketFactory());
+            c.setSSLSocketFactory(new NoSSLv3SocketFactory());
 
             // Set options and connect
             c.setReadTimeout(700);
